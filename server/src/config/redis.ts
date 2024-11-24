@@ -1,4 +1,5 @@
 import { createClient, RedisClientType } from "redis";
+
 import dotenv from "dotenv";
 import logger from "./logger";
 
@@ -7,7 +8,7 @@ dotenv.config();
 const redisHost = process.env.REDIS_HOST;
 const redisPort = Number(process.env.REDIS_PORT);
 const redisPassword = process.env.REDIS_PASSWORD;
-const client: RedisClientType = createClient({
+export const client: RedisClientType = createClient({
   password: redisPassword,
   socket: {
     host: redisHost,
