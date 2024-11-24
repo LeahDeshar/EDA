@@ -6,7 +6,7 @@ import helmet from "helmet";
 import logger from "./config/logger";
 import limiter from "./middleware/rateLimit";
 import client, { initRedisClient } from "./config/redis";
-import { Entity, Repository } from "redis-om";
+import { Repository } from "redis-om";
 import { Schema } from "redis-om";
 import { promisify } from "util";
 // import  { Client, Entity, Schema } from 'redis/om';
@@ -84,19 +84,23 @@ app.get("/deliveries/:pk/status", async (req: Request, res: Response) => {
   await setAsync(`delivery:${pk}`, JSON.stringify(state));
   res.json(state);
 });
+
 async function buildState(pk: string) {
-  const pks = await Event.allPks(); // Assuming this is an async function
-  const allEvents = await Promise.all(pks.map((pk: string) => Event.get(pk))); // Assuming Event.get is async
+  const event = await eventRepository.search().return.all();
+  const pks: string[] = event.map((event) => event.pk);
+
+  const allEvents = await Promise.all(
+    pks.map((pk: string) => eventRepository.fetch(pk))
+  );
   const events = allEvents.filter((event) => event.deliveryId === pk);
-  let state = {};
+  let state: BudgetState = { budget: 0, currency: "USD" };
 
   for (const event of events) {
-    state = CONSUMERS[event.type](state, event);
+    state = CONSUMERS[event.type as keyof typeof CONSUMERS](state, event);
   }
 
   return state;
 }
-
 app.listen(PORT, () => {
   logger.info(`Server is running on port ${PORT}`);
 });
