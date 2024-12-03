@@ -34,6 +34,9 @@ const eventSchema = new Schema("Event", {
   type: { type: "string" },
   data: { type: "string" },
 });
+
+type EventType = "BUDGET_UPDATED" | "NOTE_UPDATED";
+
 const eventRepository = new Repository(eventSchema, client);
 eventRepository.createIndex();
 interface BudgetState {
@@ -48,12 +51,15 @@ interface BudgetUpdatedEvent {
     budget: number;
   };
 }
+
 interface NoteUpdatedEvent {
   type: "NOTE_UPDATED";
   payload: {
     notes: string;
   };
 }
+
+type Event = BudgetUpdatedEvent | NoteUpdatedEvent;
 
 const CONSUMERS = {
   BUDGET_UPDATED: (state: BudgetState, event: BudgetUpdatedEvent) => {
@@ -72,19 +78,27 @@ app.get("/", (req, res) => {
   logger.info("Root route accessed");
   res.send("Welcome to the API!");
 });
-app.get("/deliveries/:pk/status", async (req: Request, res: Response) => {
-  const { pk } = req.params;
-  let state = await getAsync(`delivery:${pk}`);
 
-  if (state) {
-    return res.json(JSON.parse(state));
+app.get(
+  "/deliveries/:pk/status",
+  async (req: Request<{ pk: string }>, res: Response) => {
+    const { pk } = req.params;
+    try {
+      let state = await getAsync(`delivery:${pk}`);
+
+      if (state) {
+        res.json(JSON.parse(state));
+      }
+
+      state = await buildState(pk);
+      await setAsync(`delivery:${pk}`, JSON.stringify(state));
+      res.json(state);
+    } catch (error) {
+      console.error("Error processing delivery status:", error);
+      res.status(500).json({ error: "Internal Server Error" });
+    }
   }
-
-  state = await buildState(pk);
-  await setAsync(`delivery:${pk}`, JSON.stringify(state));
-  res.json(state);
-});
-
+);
 async function buildState(pk: string) {
   const event = await eventRepository.search().return.all();
   const pks: string[] = event.map((event) => event.pk);
@@ -96,11 +110,15 @@ async function buildState(pk: string) {
   let state: BudgetState = { budget: 0, currency: "USD" };
 
   for (const event of events) {
-    state = CONSUMERS[event.type as keyof typeof CONSUMERS](state, event);
+    state = CONSUMERS[event.type as keyof typeof CONSUMERS](
+      state,
+      event as any
+    );
   }
 
   return state;
 }
+
 app.listen(PORT, () => {
   logger.info(`Server is running on port ${PORT}`);
 });
